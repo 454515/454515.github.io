@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>今天吃什么</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#ff8a50">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="今天吃什么">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+  }
+
+  .card {
+    width: 100%;
+    max-width: 480px;
+    background: rgba(255, 255, 255, 0.92);
+    border-radius: 20px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+    padding: 28px 24px;
+    backdrop-filter: blur(6px);
+  }
+
+  h1 {
+    text-align: center;
+    font-size: 26px;
+    color: #e05a2b;
+    margin-bottom: 18px;
+    letter-spacing: 2px;
+  }
+
+  /* ============ 锁定页（密码锁，别人看不到你的内容） ============ */
+  .lock-tip {
+    text-align: center;
+    color: #c07a4a;
+    font-size: 15px;
+    margin-bottom: 16px;
+  }
+
+  .lock-row { margin-bottom: 12px; }
+
+  .lock-row input {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    font-size: 15px;
+    outline: none;
+  }
+  .lock-row input:focus { border-color: #ff8a50; }
+
+  .lock-msg {
+    text-align: center;
+    font-size: 13px;
+    color: #d9534f;
+    min-height: 18px;
+    margin-top: 8px;
+  }
+
+  .lock-hint {
+    text-align: center;
+    font-size: 12px;
+    color: #bbb;
+    line-height: 1.7;
+    margin-top: 12px;
+  }
+
+  /* ============ 退出按钮 ============ */
+  .logout-btn {
+    margin-left: 8px;
+    padding: 5px 12px;
+    border: 1px solid #e5c0a8;
+    background: #fff;
+    color: #c07a4a;
+    border-radius: 8px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .logout-btn:hover { background: #fff4ec; }
+
+  /* ============ 滚动视窗（开箱区） ============ */
+  .result-box {
+    position: relative;
+    height: 120px;
+    overflow: hidden;
+    border: 2px dashed #f5b58f;
+    border-radius: 14px;
+    background: #fff7f2;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+
+  .result-box.rolling {
+    border-color: #e05a2b;
+    border-style: solid;
+    box-shadow: inset 0 0 30px rgba(224, 90, 43, 0.12);
+  }
+
+  .result-box .hint {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #c9a98c;
+    font-size: 15px;
+    z-index: 2;
+    background: #fff7f2;
+  }
+
+  .reel {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    will-change: transform;
+  }
+
+  .reel-item {
+    flex: 0 0 100px;
+    width: 100px;
+    height: 80px;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    color: #fff;
+    user-select: none;
+    position: relative;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.18);
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+  }
+
+  .reel-item .emoji { font-size: 28px; line-height: 1; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.25)); }
+  .reel-item .name {
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 88px;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+  }
+
+  /* 指针指到的卡片：放大 + 金色光框；滚走后自动恢复原样 */
+  .reel-item.active {
+    transform: scale(1.25);
+    box-shadow: 0 0 0 3px #ffb800, 0 8px 26px rgba(255, 184, 0, 0.5);
+    z-index: 5;
+  }
+
+  /* 中央指针（选中标记） */
+  .reel-marker { position: absolute; top: 0; bottom: 0; left: 50%; width: 0; pointer-events: none; z-index: 6; }
+  .reel-marker .tip-top {
+    position: absolute; top: -2px; left: 50%; transform: translateX(-50%);
+    width: 0; height: 0;
+    border-left: 9px solid transparent; border-right: 9px solid transparent;
+    border-top: 12px solid #e05a2b;
+    filter: drop-shadow(0 2px 3px rgba(224,90,43,0.4));
+  }
+  .reel-marker .tip-bottom {
+    position: absolute; bottom: -2px; left: 50%; transform: translateX(-50%);
+    width: 0; height: 0;
+    border-left: 9px solid transparent; border-right: 9px solid transparent;
+    border-bottom: 12px solid #e05a2b;
+    filter: drop-shadow(0 -2px 3px rgba(224,90,43,0.4));
+  }
+
+  /* 抽中结果文字 */
+  .pick-result {
+    text-align: center;
+    font-size: 18px;
+    font-weight: bold;
+    color: #e05a2b;
+    min-height: 28px;
+    margin-bottom: 12px;
+    padding: 0 8px;
+  }
+
+  /* ============ 按钮 ============ */
+  .draw-btn {
+    width: 100%;
+    padding: 14px;
+    font-size: 20px;
+    font-weight: bold;
+    color: #fff;
+    border: none;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #ff9a56, #ff6a3d);
+    cursor: pointer;
+    letter-spacing: 4px;
+    box-shadow: 0 6px 18px rgba(255, 106, 61, 0.4);
+    transition: transform 0.1s, box-shadow 0.1s, opacity 0.2s;
+    margin-bottom: 20px;
+  }
+
+  .draw-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(255, 106, 61, 0.5); }
+  .draw-btn:active:not(:disabled) { transform: translateY(0); }
+  .draw-btn:disabled { opacity: 0.6; cursor: wait; }
+
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+
+  .controls label { font-size: 14px; color: #666; white-space: nowrap; }
+
+  .controls input[type="number"] {
+    width: 60px;
+    padding: 6px 8px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 14px;
+    text-align: center;
+  }
+
+  .clear-btn {
+    margin-left: auto;
+    padding: 7px 14px;
+    border: 1px solid #e5c0a8;
+    background: #fff;
+    color: #c07a4a;
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .clear-btn:hover { background: #fff4ec; }
+
+  /* ============ 添加食物 ============ */
+  .add-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .add-row input[type="text"] {
+    flex: 1;
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    font-size: 15px;
+    outline: none;
+  }
+  .add-row input[type="text"]:focus { border-color: #ff8a50; }
+
+  .add-btn {
+    padding: 10px 18px;
+    border: none;
+    border-radius: 10px;
+    background: #ff8a50;
+    color: #fff;
+    font-size: 15px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .add-btn:hover { background: #ff7438; }
+
+  /* ============ 食物列表 ============ */
+  .list-title {
+    font-size: 14px;
+    color: #888;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .food-list { list-style: none; max-height: 260px; overflow-y: auto; }
+
+  .food-list li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    margin-bottom: 6px;
+    background: #fff9f4;
+    border-radius: 10px;
+    font-size: 15px;
+    color: #555;
+  }
+
+  .food-list li:hover { background: #fff1e6; }
+
+  .food-name { flex: 1; }
+
+  .del-btn {
+    border: none;
+    background: none;
+    color: #d9534f;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 0 4px;
+    opacity: 0.6;
+  }
+  .del-btn:hover { opacity: 1; }
+
+  .empty-tip {
+    text-align: center;
+    color: #bbb;
+    padding: 16px 0;
+    font-size: 14px;
+  }
+
+  footer {
+    text-align: center;
+    font-size: 12px;
+    color: #c0a08a;
+    margin-top: 12px;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>🍜 今天吃什么</h1>
+
+    <!-- 锁定页：未登录时只显示这里，看不到任何人的内容 -->
+    <div id="lockScreen">
+      <p class="lock-tip">🔒 先登录，才能看到自己的列表</p>
+      <div class="lock-row">
+        <input type="text" id="lockName" placeholder="你的名字">
+      </div>
+      <div class="lock-row">
+        <input type="password" id="lockPwd" placeholder="密码" autocomplete="off">
+      </div>
+      <button class="draw-btn" id="lockBtn" style="letter-spacing:2px;">🔓 进入</button>
+      <p class="lock-msg" id="lockMsg"></p>
+      <p class="lock-hint">第一次使用：输入名字并设置一个密码，会自动创建专属页面。<br>同一台设备上，只有输对密码的人才能看到自己的内容。</p>
+    </div>
+
+    <!-- 应用内容：登录后才显示 -->
+    <div id="appArea" hidden>
+      <div class="result-box" id="resultBox">
+        <span class="hint" id="resultHint">点击下方按钮，开始滚动抽取</span>
+        <div class="reel" id="reel"></div>
+        <div class="reel-marker">
+          <span class="tip-top"></span>
+          <span class="tip-bottom"></span>
+        </div>
+      </div>
+      <div class="pick-result" id="pickResult"></div>
+
+      <button class="draw-btn" id="drawBtn">🎲 随机抽取</button>
+
+      <div class="controls">
+        <label for="countInput">抽取数量：</label>
+        <input type="number" id="countInput" min="1" max="20" value="1">
+        <button class="clear-btn" id="clearBtn">清空列表</button>
+      </div>
+
+      <div class="add-row">
+        <input type="text" id="foodInput" placeholder="输入想吃的美食，回车添加">
+        <button class="add-btn" id="addBtn">＋ 添加</button>
+      </div>
+
+      <p class="list-title">食物列表（<span id="foodCount">0</span>）</p>
+      <ul class="food-list" id="foodList"></ul>
+
+      <footer>
+        当前：<span id="loginName"></span>
+        <button class="logout-btn" id="logoutBtn">退出</button>
+      </footer>
+    </div>
+  </div>
+
+<script>
+// ============ 默认食物列表（用户可自行增删修改） ============
+const DEFAULT_FOODS = [
+  "火锅", "麻辣烫", "兰州拉面", "黄焖鸡米饭",
+  "沙县小吃", "汉堡薯条", "蛋炒饭", "饺子",
+  "盖浇饭", "烧烤", "螺蛳粉", "烤冷面"
+];
+
+// ============ 账号与密码锁（每个人只能看到自己的内容） ============
+const ACCOUNTS_KEY = "what-to-eat-accounts";   // { 名字: 密码指纹 }
+const LEGACY_KEY = "what-to-eat-foods";        // 更早版本的数据键
+
+let currentName = "";   // 只有登录成功后才会被赋值
+let foods = [...DEFAULT_FOODS];
+
+// 密码指纹（不存明文密码；用于同一台设备上家人之间互不查看）
+function hashPassword(pwd) {
+  const s = "jtcsm::" + pwd;
+  let h1 = 0x811c9dc5, h2 = 0x9e3779b9;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 16777619);
+    h2 = Math.imul(h2 ^ (c + i), 2246822519);
+  }
+  return (h1 >>> 0).toString(16) + (h2 >>> 0).toString(16);
+}
+
+function getAccounts() {
+  try {
+    const acc = JSON.parse(localStorage.getItem(ACCOUNTS_KEY));
+    if (acc && typeof acc === "object") return acc;
+  } catch (e) { /* 忽略损坏数据 */ }
+  return {};
+}
+
+function saveAccounts(acc) {
+  localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(acc));
+}
+
+// 每个名字对应一套食物列表，都存在本浏览器里
+function storageKeyFor(name) {
+  return "what-to-eat-foods:" + name;
+}
+
+function loadFoods(name) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(storageKeyFor(name)));
+    if (Array.isArray(saved) && saved.length > 0) return saved;
+  } catch (e) { /* 忽略损坏数据 */ }
+  return [...DEFAULT_FOODS];
+}
+
+function saveFoods() {
+  if (!currentName) return;
+  localStorage.setItem(storageKeyFor(currentName), JSON.stringify(foods));
+}
+
+// 升级旧版数据：原来的列表和人名归到账号下，默认密码 123456
+function migrateLegacy() {
+  if (Object.keys(getAccounts()).length > 0) return; // 已经有账号了
+  const accounts = {};
+  try {
+    const oldProfiles = JSON.parse(localStorage.getItem("what-to-eat-profiles"));
+    if (Array.isArray(oldProfiles) && oldProfiles.length > 0) {
+      oldProfiles.forEach(name => { accounts[name] = hashPassword("123456"); });
+    } else {
+      const legacy = JSON.parse(localStorage.getItem(LEGACY_KEY));
+      if (Array.isArray(legacy) && legacy.length > 0) {
+        localStorage.setItem(storageKeyFor("我"), JSON.stringify(legacy));
+        accounts["我"] = hashPassword("123456");
+      }
+    }
+  } catch (e) { /* 忽略损坏数据 */ }
+  if (Object.keys(accounts).length > 0) saveAccounts(accounts);
+}
+
+// ============ DOM 引用 ============
+const resultBox = document.getElementById("resultBox");
+const resultHint = document.getElementById("resultHint");
+const reelEl = document.getElementById("reel");
+const pickResult = document.getElementById("pickResult");
+const drawBtn = document.getElementById("drawBtn");
+const countInput = document.getElementById("countInput");
+const clearBtn = document.getElementById("clearBtn");
+const foodInput = document.getElementById("foodInput");
+const addBtn = document.getElementById("addBtn");
+const foodList = document.getElementById("foodList");
+const foodCount = document.getElementById("foodCount");
+const lockScreen = document.getElementById("lockScreen");
+const appArea = document.getElementById("appArea");
+const lockName = document.getElementById("lockName");
+const lockPwd = document.getElementById("lockPwd");
+const lockBtn = document.getElementById("lockBtn");
+const lockMsg = document.getElementById("lockMsg");
+const loginName = document.getElementById("loginName");
+const logoutBtn = document.getElementById("logoutBtn");
+
+// ============ 开箱常量 ============
+const ITEM_W = 100;          // 卡片宽度（px）
+const ITEM_STEP = 110;       // 卡片宽度 + 间距 = 滚动步长
+
+const EMOJIS = ["🍜","🍕","🍔","🌮","🍣","🍤","🍗","🍖","🥟","🍚","🍲","🥡","🍢","🥗","🍝","🥘","🌽","🥐"];
+const COLORS = [
+  "#ff7a59","#ffa44d","#f7b733","#ff6f61","#e056a0","#9b6bff",
+  "#5b8cff","#2fb3a5","#4fae4f","#c98a3d","#d95f76","#6a8ddb"
+];
+
+// ============ 工具函数 ============
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function hashIndex(i) {
+  let h = 0;
+  const s = String(i);
+  for (let k = 0; k < s.length; k++) h = (h * 31 + s.charCodeAt(k)) >>> 0;
+  return h;
+}
+
+// ============ 构造滚轮数据 ============
+// 将食物打乱后重复多份，再整体乱序，避免出现肉眼可见的周期
+function buildReel() {
+  const base = shuffle([...foods]);
+  const repeats = Math.max(4, Math.ceil(44 / base.length));
+  let arr = [];
+  for (let i = 0; i < repeats; i++) arr = arr.concat(base);
+  return shuffle(arr);
+}
+
+function renderReel(reel) {
+  reelEl.innerHTML = "";
+  reel.forEach((name, i) => {
+    const h = hashIndex(i + 1);
+    const item = document.createElement("div");
+    item.className = "reel-item";
+    item.style.background = COLORS[h % COLORS.length];
+    item.innerHTML =
+      `<span class="emoji">${EMOJIS[h % EMOJIS.length]}</span>` +
+      `<span class="name">${escapeHtml(name)}</span>`;
+    reelEl.appendChild(item);
+  });
+  reelEl.style.transform = "translateX(0)";   // 每次开新轮都从起点开始
+}
+
+// ============================================================
+//  ★★★ 滚动减速手感调节区 —— 改完刷新页面即可生效 ★★★
+// ============================================================
+const ROLL_DURATION   = 3000;  // 单次滚动总时长（毫秒）。越大滚得越久，末尾慢速段也跟着变长
+                               //   例如：2600 = 滚 2.6 秒；想更干脆就调小，想更悠长就调大
+const ROLL_FAST_PHASE = 0.55;  // 前多少比例的时间用于"快速滚动"（0.55 = 前55%时间在快速滚）
+                               //   剩下的 45% 时间全部用来慢速滑行
+                               //   越接近 1：慢速段越短、停得越干脆；越接近 0：慢速段越长
+const ROLL_FAST_DIST  = 0.85;  // 快速段要跑完总路程的多少比例（0.82 = 82%）
+                               //   剩下的 18% 路程留给慢速段慢慢爬完
+                               //   越接近 1：慢速段越短；越小：慢速段越长（更有"期待感"）
+
+// 滚动位置随时间的变化曲线（返回 0→1），一般不用改
+function rollEase(t) {
+  if (t < ROLL_FAST_PHASE) {
+    // —— 快速段：匀速飞快掠过，营造"快速开箱"的感觉 ——
+    return ROLL_FAST_DIST * (t / ROLL_FAST_PHASE);
+  }
+  // —— 慢速段：三次方缓出，速度一路递减，最终停在指针下 ——
+  const p = (t - ROLL_FAST_PHASE) / (1 - ROLL_FAST_PHASE);
+  return ROLL_FAST_DIST + (1 - ROLL_FAST_DIST) * (1 - Math.pow(1 - p, 3));
+}
+
+// ============ 滚动动画：快速滚动 → 明显降速 → 蠕行到停 ============
+function animateReel(reel, targetIndex, duration) {
+  return new Promise(resolve => {
+    const centerOffset = (resultBox.clientWidth - ITEM_W) / 2;
+    const finalX = centerOffset - targetIndex * ITEM_STEP; // 目标卡片正好停在中央
+    const startTime = performance.now();
+    const items = reelEl.children;
+    let lastActive = -1;
+
+    // 指针指到的卡片放大，滚走后恢复原样
+    function setActive(i) {
+      if (i === lastActive) return;
+      if (lastActive >= 0 && items[lastActive]) items[lastActive].classList.remove("active");
+      if (i >= 0 && i < items.length && items[i]) items[i].classList.add("active");
+      lastActive = i;
+    }
+
+    function frame(now) {
+      const t = Math.min(1, (now - startTime) / duration);
+      const eased = rollEase(t);   // 位置曲线由上面"减速手感调节区"的参数控制
+      const x = finalX * eased;
+      reelEl.style.transform = `translateX(${x}px)`;
+
+      // 当前停在指针下的卡片序号
+      const active = Math.round((centerOffset - x) / ITEM_STEP);
+      setActive(active);
+
+      if (t < 1) {
+        requestAnimationFrame(frame);
+      } else {
+        reelEl.style.transform = `translateX(${finalX}px)`;
+        resolve();
+      }
+    }
+    requestAnimationFrame(frame);
+  });
+}
+
+// ============ 开箱主流程 ============
+let rolling = false;
+
+drawBtn.addEventListener("click", startDraw);
+
+async function startDraw() {
+  if (rolling) return;
+
+  if (foods.length === 0) {
+    pickResult.textContent = "列表为空，请先添加美食";
+    return;
+  }
+
+  const count = Math.min(Math.max(parseInt(countInput.value) || 1, 1), foods.length);
+  rolling = true;
+  drawBtn.disabled = true;
+  resultHint.style.display = "none";
+  resultBox.classList.add("rolling");
+  pickResult.textContent = "";
+
+  // 抽的数量越多，单次滚动稍快一些，避免等待太久；总时长取上面调节区的 ROLL_DURATION
+  const baseDuration = Math.max(1100, ROLL_DURATION - (count - 1) * 150);
+  const winners = [];
+
+  for (let k = 0; k < count; k++) {
+    const reel = buildReel();
+    renderReel(reel);
+
+    // 目标落在滚轮中后段，留足滚动距离，且保证每道菜被抽中的概率接近
+    const minIdx = Math.floor(reel.length * 0.35);
+    const maxIdx = Math.floor(reel.length * 0.75);
+    const target = minIdx + Math.floor(Math.random() * (maxIdx - minIdx + 1));
+    const winner = reel[target];
+
+    await animateReel(reel, target, baseDuration);
+    // 停稳后指针下的卡片已自动保持放大状态
+
+    winners.push(winner);
+    pickResult.textContent = count > 1
+      ? `第 ${k + 1} 个：${winner}`
+      : `🎉 ${winner}！🎉`;
+
+    if (k < count - 1) await sleep(650); // 稍作停顿再开下一次
+  }
+
+  if (count > 1) {
+    pickResult.textContent = `🎉 今日推荐：${winners.join("、")}`;
+  }
+
+  resultBox.classList.remove("rolling");
+  rolling = false;
+  drawBtn.disabled = false;
+}
+
+// ============ 登录 / 退出 ============
+function showApp() {
+  lockScreen.hidden = true;
+  appArea.hidden = false;
+  loginName.textContent = currentName;
+  lockName.value = "";
+  lockPwd.value = "";
+  lockMsg.textContent = "";
+  renderList();
+}
+
+function showLock(msg) {
+  appArea.hidden = true;
+  lockScreen.hidden = false;
+  lockMsg.textContent = msg || "";
+  lockName.focus();
+}
+
+// 登录：名字不存在就自动创建；存在则校验密码
+function login() {
+  const name = lockName.value.trim();
+  const pwd = lockPwd.value;
+  if (!name || !pwd) {
+    lockMsg.textContent = "请填写名字和密码";
+    return;
+  }
+  const accounts = getAccounts();
+  const fp = hashPassword(pwd);
+  if (accounts[name]) {
+    if (accounts[name] !== fp) {
+      lockMsg.textContent = "密码不对，进不去哦";
+      return;
+    }
+  } else {
+    accounts[name] = fp;          // 第一次使用：创建账号
+    saveAccounts(accounts);
+  }
+  currentName = name;
+  foods = loadFoods(name);
+  showApp();
+}
+
+lockBtn.addEventListener("click", login);
+lockPwd.addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
+
+logoutBtn.addEventListener("click", () => {
+  currentName = "";
+  foods = [...DEFAULT_FOODS];
+  showLock("");
+});
+
+// ============ 列表管理 ============
+function renderList() {
+  foodList.innerHTML = "";
+  foodCount.textContent = foods.length;
+
+  if (foods.length === 0) {
+    foodList.innerHTML = '<li class="empty-tip">列表为空，请在下方添加美食</li>';
+    return;
+  }
+
+  foods.forEach((name, index) => {
+    const li = document.createElement("li");
+    const span = document.createElement("span");
+    span.className = "food-name";
+    span.textContent = name;
+    const del = document.createElement("button");
+    del.className = "del-btn";
+    del.textContent = "✕";
+    del.title = "删除";
+    del.addEventListener("click", () => removeFood(index));
+    li.appendChild(span);
+    li.appendChild(del);
+    foodList.appendChild(li);
+  });
+}
+
+function removeFood(index) {
+  foods.splice(index, 1);
+  saveFoods();
+  renderList();
+}
+
+function addFood() {
+  const name = foodInput.value.trim();
+  if (!name) { foodInput.focus(); return; }
+
+  if (foods.includes(name)) {
+    foodInput.value = "";
+    foodInput.placeholder = "这道菜已经在列表里了";
+    setTimeout(() => { foodInput.placeholder = "输入想吃的美食，回车添加"; }, 1500);
+    return;
+  }
+
+  foods.push(name);
+  saveFoods();
+  renderList();
+  foodInput.value = "";
+  foodInput.focus();
+}
+
+addBtn.addEventListener("click", addFood);
+foodInput.addEventListener("keydown", (e) => { if (e.key === "Enter") addFood(); });
+
+clearBtn.addEventListener("click", () => {
+  if (foods.length === 0) return;
+  if (confirm("确定清空所有食物吗？（已添加的内容将丢失）")) {
+    foods = [];
+    saveFoods();
+    renderList();
+  }
+});
+
+// ============ 初始化 ============
+migrateLegacy();       // 把旧版本的数据搬进账号体系
+currentName = "";
+foods = [...DEFAULT_FOODS];
+showLock("");          // 每次打开都先显示锁定页，只有本人输对密码才能看到内容
+</script>
+<script>
+// PWA 离线支持：断网也能打开（需要 https 网址才会生效）
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function () {});
+  });
+}
+</script>
+</body>
+</html>
