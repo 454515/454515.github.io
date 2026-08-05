@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>今天吃什么</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#ff8a50">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="今天吃什么">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -1101,6 +1108,14 @@ if (savedUser && getAccounts()[savedUser] !== undefined) {
   currentName = "";
   foods = [...DEFAULT_FOODS];
   showPick("", { canBack: false });
+}
+</script>
+<script>
+// PWA 离线支持：断网也能打开（需要 https 网址才会生效）
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function () {});
+  });
 }
 </script>
 </body>
