@@ -4,13 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>今天吃什么</title>
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#ff8a50">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="今天吃什么">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png">
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -77,6 +70,59 @@
     line-height: 1.7;
     margin-top: 12px;
   }
+
+  /* ============ 选择页（谁在用这台设备） ============ */
+  .pick-list { list-style: none; margin-bottom: 14px; }
+  .pick-item {
+    padding: 11px 14px;
+    margin-bottom: 6px;
+    background: #fff9f4;
+    border: 1px solid #ffe3d0;
+    border-radius: 10px;
+    font-size: 15px;
+    color: #555;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: background 0.15s;
+  }
+  .pick-item:hover { background: #fff1e6; }
+  .pick-item .current-badge {
+    font-size: 11px;
+    color: #e05a2b;
+    border: 1px solid #ffc4a0;
+    border-radius: 6px;
+    padding: 1px 6px;
+  }
+  .pick-back-row { text-align: center; margin: 10px 0 2px; }
+  .pick-list-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 4px 8px;
+    font-size: 14px;
+    color: #888;
+    cursor: pointer;
+    user-select: none;
+    border-bottom: 1px dashed #f0d9c6;
+    margin-bottom: 8px;
+  }
+  .pick-list-head:hover { color: #c07a4a; }
+  .pick-toggle { font-size: 12px; color: #c07a4a; }
+  .pick-right { display: flex; align-items: center; gap: 10px; }
+  .forgot-btn {
+    display: block;
+    margin: 4px auto 0;
+    padding: 4px 10px;
+    border: none;
+    background: none;
+    color: #c07a4a;
+    font-size: 12px;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+  .forgot-btn:hover { color: #e05a2b; }
 
   /* ============ 退出按钮 ============ */
   .logout-btn {
@@ -330,18 +376,28 @@
   <div class="card">
     <h1>🍜 今天吃什么</h1>
 
-    <!-- 锁定页：未登录时只显示这里，看不到任何人的内容 -->
-    <div id="lockScreen">
-      <p class="lock-tip">🔒 先登录，才能看到自己的列表</p>
-      <div class="lock-row">
-        <input type="text" id="lockName" placeholder="你的名字">
+    <!-- 选择页：平时打开直接进入上次的人，想换人才来这里 -->
+    <div id="pickScreen" hidden>
+      <p class="lock-tip">👋 选一个人，或创建一个新的</p>
+      <div class="pick-list-head" id="pickListHead" role="button" tabindex="0">
+        <span>👥 用户列表（<span id="pickCount">0</span>）</span>
+        <span class="pick-toggle" id="pickToggle">▲ 收起</span>
+      </div>
+      <ul class="pick-list" id="pickList"></ul>
+
+      <div class="add-row" id="pickNameRow">
+        <input type="text" id="pickName" placeholder="新名字，创建一个人">
       </div>
       <div class="lock-row">
-        <input type="password" id="lockPwd" placeholder="密码" autocomplete="off">
+        <input type="password" id="pickPwd" placeholder="设置密码（可留空）" autocomplete="off">
       </div>
-      <button class="draw-btn" id="lockBtn" style="letter-spacing:2px;">🔓 进入</button>
-      <p class="lock-msg" id="lockMsg"></p>
-      <p class="lock-hint">第一次使用：输入名字并设置一个密码，会自动创建专属页面。<br>同一台设备上，只有输对密码的人才能看到自己的内容。</p>
+      <button class="draw-btn" id="pickConfirm" style="letter-spacing:2px;">✨ 创建并进入</button>
+      <p class="lock-msg" id="pickMsg"></p>
+      <button class="forgot-btn" id="forgotBtn">忘记密码？</button>
+      <div class="pick-back-row">
+        <button class="logout-btn" id="pickBack" hidden>← 返回</button>
+      </div>
+      <p class="lock-hint"></p>
     </div>
 
     <!-- 应用内容：登录后才显示 -->
@@ -374,7 +430,7 @@
 
       <footer>
         当前：<span id="loginName"></span>
-        <button class="logout-btn" id="logoutBtn">退出</button>
+        <button class="logout-btn" id="switchBtn">切换用户</button>
       </footer>
     </div>
   </div>
@@ -388,7 +444,9 @@ const DEFAULT_FOODS = [
 ];
 
 // ============ 账号与密码锁（每个人只能看到自己的内容） ============
-const ACCOUNTS_KEY = "what-to-eat-accounts";   // { 名字: 密码指纹 }
+const ACCOUNTS_KEY = "what-to-eat-accounts";   // { 名字: 密码指纹（"" 表示没设密码） }
+const LAST_USER_KEY = "what-to-eat-lastuser";  // 上次使用的人，用于自动进入
+const ADMIN_KEY = "what-to-eat-admin";         // 管理员密码指纹（"" 表示还没设置）
 const LEGACY_KEY = "what-to-eat-foods";        // 更早版本的数据键
 
 let currentName = "";   // 只有登录成功后才会被赋值
@@ -416,6 +474,22 @@ function getAccounts() {
 
 function saveAccounts(acc) {
   localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(acc));
+}
+
+function getLastUser() {
+  try { return localStorage.getItem(LAST_USER_KEY) || ""; } catch (e) { return ""; }
+}
+
+function setLastUser(name) {
+  try { localStorage.setItem(LAST_USER_KEY, name); } catch (e) { /* 忽略 */ }
+}
+
+function getAdminPwd() {
+  try { return localStorage.getItem(ADMIN_KEY) || ""; } catch (e) { return ""; }
+}
+
+function setAdminPwd(fp) {
+  try { localStorage.setItem(ADMIN_KEY, fp); } catch (e) { /* 忽略 */ }
 }
 
 // 每个名字对应一套食物列表，都存在本浏览器里
@@ -467,14 +541,21 @@ const foodInput = document.getElementById("foodInput");
 const addBtn = document.getElementById("addBtn");
 const foodList = document.getElementById("foodList");
 const foodCount = document.getElementById("foodCount");
-const lockScreen = document.getElementById("lockScreen");
+const pickScreen = document.getElementById("pickScreen");
 const appArea = document.getElementById("appArea");
-const lockName = document.getElementById("lockName");
-const lockPwd = document.getElementById("lockPwd");
-const lockBtn = document.getElementById("lockBtn");
-const lockMsg = document.getElementById("lockMsg");
+const pickList = document.getElementById("pickList");
+const pickListHead = document.getElementById("pickListHead");
+const pickCount = document.getElementById("pickCount");
+const pickToggle = document.getElementById("pickToggle");
+const pickName = document.getElementById("pickName");
+const pickNameRow = document.getElementById("pickNameRow");
+const pickPwd = document.getElementById("pickPwd");
+const pickConfirm = document.getElementById("pickConfirm");
+const pickMsg = document.getElementById("pickMsg");
+const pickBack = document.getElementById("pickBack");
+const forgotBtn = document.getElementById("forgotBtn");
 const loginName = document.getElementById("loginName");
-const logoutBtn = document.getElementById("logoutBtn");
+const switchBtn = document.getElementById("switchBtn");
 
 // ============ 开箱常量 ============
 const ITEM_W = 100;          // 卡片宽度（px）
@@ -648,56 +729,302 @@ async function startDraw() {
   drawBtn.disabled = false;
 }
 
-// ============ 登录 / 退出 ============
+// ============ 进入 / 切换用户 ============
+let pendingName = "";     // 在“选择页”里点了一个带密码的人时，用它暂存
+let pendingAction = "enter";  // 密码验证通过后做什么："enter" 进入 / "delete" 删除 / "admin-set" 设管理员 / "admin-verify" 验证管理员 / "reset-new" 重置某人密码
+let listCollapsed = false;    // 用户列表是否收起
+let adminMode = false;        // 管理员身份是否已确认（可重置任意人的密码）
+
+function resetPickForm() {
+  pendingName = "";
+  pendingAction = "enter";
+  pickName.value = "";
+  pickNameRow.hidden = false;
+  pickPwd.value = "";
+  pickPwd.placeholder = "设置密码（可留空）";
+  pickConfirm.textContent = "✨ 创建并进入";
+  pickMsg.textContent = "";
+}
+
+// 忘记密码按钮的文字，随状态变化
+function updateForgotBtn() {
+  if (adminMode) {
+    forgotBtn.textContent = "🔑 管理员已确认（点此退出）";
+  } else if (getAdminPwd()) {
+    forgotBtn.textContent = "忘记密码？";
+  } else {
+    forgotBtn.textContent = "忘记密码？（首次需先设置管理员）";
+  }
+}
+
 function showApp() {
-  lockScreen.hidden = true;
+  pickScreen.hidden = true;
   appArea.hidden = false;
   loginName.textContent = currentName;
-  lockName.value = "";
-  lockPwd.value = "";
-  lockMsg.textContent = "";
   renderList();
 }
 
-function showLock(msg) {
-  appArea.hidden = true;
-  lockScreen.hidden = false;
-  lockMsg.textContent = msg || "";
-  lockName.focus();
-}
-
-// 登录：名字不存在就自动创建；存在则校验密码
-function login() {
-  const name = lockName.value.trim();
-  const pwd = lockPwd.value;
-  if (!name || !pwd) {
-    lockMsg.textContent = "请填写名字和密码";
-    return;
-  }
-  const accounts = getAccounts();
-  const fp = hashPassword(pwd);
-  if (accounts[name]) {
-    if (accounts[name] !== fp) {
-      lockMsg.textContent = "密码不对，进不去哦";
-      return;
-    }
-  } else {
-    accounts[name] = fp;          // 第一次使用：创建账号
-    saveAccounts(accounts);
-  }
+// 进入某个人：切换“当前人”，并记住，下次打开直接进
+function enterUser(name) {
   currentName = name;
   foods = loadFoods(name);
+  setLastUser(name);
   showApp();
 }
 
-lockBtn.addEventListener("click", login);
-lockPwd.addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
+function showPick(msg, opts) {
+  appArea.hidden = true;
+  pickScreen.hidden = false;
+  adminMode = false;              // 每次进入选择页都退出管理员模式
+  resetPickForm();
+  pickMsg.textContent = msg || "";
+  pickBack.hidden = !(opts && opts.canBack);   // 切换时显示“返回”，首次打开不显示
+  renderPickList();
+  updateForgotBtn();
+  pickName.focus();
+}
 
-logoutBtn.addEventListener("click", () => {
-  currentName = "";
-  foods = [...DEFAULT_FOODS];
-  showLock("");
+function renderPickList() {
+  pickList.innerHTML = "";
+  const names = Object.keys(getAccounts()).sort();
+  pickCount.textContent = names.length;
+
+  if (names.length === 0) {
+    pickListHead.style.display = "none";
+    pickList.style.display = "";
+    pickList.innerHTML = '<li class="empty-tip">还没有任何人，先在下方创建一个吧</li>';
+    return;
+  }
+  pickListHead.style.display = "";
+  pickList.style.display = listCollapsed ? "none" : "";
+  pickToggle.textContent = listCollapsed ? "▼ 展开" : "▲ 收起";
+
+  names.forEach(name => {
+    const li = document.createElement("li");
+    li.className = "pick-item";
+
+    const span = document.createElement("span");
+    span.textContent = name;
+    li.appendChild(span);
+
+    // 右侧：当前标记 + 删除按钮
+    const right = document.createElement("span");
+    right.className = "pick-right";
+    if (name === currentName) {
+      const badge = document.createElement("span");
+      badge.className = "current-badge";
+      badge.textContent = "当前";
+      right.appendChild(badge);
+    }
+    const del = document.createElement("button");
+    del.className = "del-btn";
+    del.textContent = "🗑";
+    del.title = "删除这个人（连同 TA 的列表）";
+    del.addEventListener("click", (e) => {
+      e.stopPropagation();   // 点删除不要触发“进入”
+      deleteUserRequest(name);
+    });
+    right.appendChild(del);
+    li.appendChild(right);
+
+    li.addEventListener("click", () => selectUser(name));
+    pickList.appendChild(li);
+  });
+}
+
+// 点了列表里的一个人：
+//   - 没设密码（或就是自己）→ 直接进入
+//   - 设了密码 → 在这里输密码验证
+function selectUser(name) {
+  if (name === currentName) { showApp(); return; }
+  const accounts = getAccounts();
+  if (!accounts[name]) {
+    enterUser(name);
+    return;
+  }
+  if (adminMode) {
+    // 管理员模式：不用原密码，直接给这个人设新密码
+    pendingName = name;
+    pendingAction = "reset-new";
+    pickNameRow.hidden = true;
+    pickPwd.value = "";
+    pickPwd.placeholder = "为「" + name + "」设置新密码（可留空=不需要密码）";
+    pickConfirm.textContent = "💾 保存新密码";
+    pickMsg.textContent = "管理员已确认，无需原密码";
+    pickPwd.focus();
+    return;
+  }
+  pendingName = name;
+  pendingAction = "enter";
+  pickPwd.value = "";
+  pickPwd.placeholder = "输入「" + name + "」的密码";
+  pickConfirm.textContent = "🔓 进入 " + name;
+  pickMsg.textContent = "";
+  pickPwd.focus();
+}
+
+// 选择页的确认按钮：创建新的人，或验证密码进入已点选的人
+function pickAction() {
+  const accounts = getAccounts();
+
+  // —— 忘记密码 / 管理员相关（不需要目标用户的密码） ——
+  if (pendingAction === "admin-set") {
+    const pwd = pickPwd.value;
+    if (!pwd) { pickMsg.textContent = "请设置一个管理员密码"; return; }
+    setAdminPwd(hashPassword(pwd));
+    adminMode = true;
+    resetPickForm();
+    renderPickList();
+    updateForgotBtn();
+    pickMsg.textContent = "管理员密码已设置，点任一人即可重置 TA 的密码";
+    return;
+  }
+  if (pendingAction === "admin-verify") {
+    const pwd = pickPwd.value;
+    if (!pwd) { pickMsg.textContent = "请输入管理员密码"; return; }
+    if (getAdminPwd() !== hashPassword(pwd)) {
+      pickMsg.textContent = "管理员密码不对";
+      return;
+    }
+    adminMode = true;
+    resetPickForm();
+    renderPickList();
+    updateForgotBtn();
+    pickMsg.textContent = "管理员身份已确认，点任一人即可重置 TA 的密码";
+    return;
+  }
+  if (pendingAction === "reset-new" && pendingName) {
+    const target = pendingName;
+    const pwd = pickPwd.value;
+    accounts[target] = pwd ? hashPassword(pwd) : "";
+    saveAccounts(accounts);
+    resetPickForm();
+    renderPickList();
+    updateForgotBtn();
+    pickMsg.textContent = "已重置「" + target + "」的密码" + (pwd ? "" : "（改为不需要密码）");
+    return;
+  }
+
+  // —— 普通：输入某人的密码 ——
+  if (pendingName) {
+    const pwd = pickPwd.value;
+    if (!pwd) { pickMsg.textContent = "请输入「" + pendingName + "」的密码"; return; }
+    if (accounts[pendingName] !== hashPassword(pwd)) {
+      pickMsg.textContent = "密码不对，进不去哦";
+      return;
+    }
+    if (pendingAction === "delete") {
+      doDeleteUser(pendingName);
+    } else {
+      enterUser(pendingName);
+    }
+    return;
+  }
+
+  // —— 创建新人 ——
+  const name = pickName.value.trim();
+  if (!name) { pickMsg.textContent = "请填一个名字"; pickName.focus(); return; }
+  if (accounts[name]) {
+    pickMsg.textContent = "这个名字已经存在，直接在列表里点它";
+    return;
+  }
+  const pwd = pickPwd.value;
+  accounts[name] = pwd ? hashPassword(pwd) : "";   // 密码可留空；留空则切换时不用输
+  saveAccounts(accounts);
+  enterUser(name);
+}
+
+// 点列表里的“🗑”：没设密码的直接确认删除；设了密码的先验证密码
+function deleteUserRequest(name) {
+  const accounts = getAccounts();
+  if (!accounts[name] || adminMode) {   // 没设密码，或管理员模式下：直接删除
+    doDeleteUser(name);
+    return;
+  }
+  pendingName = name;
+  pendingAction = "delete";
+  pickPwd.value = "";
+  pickPwd.placeholder = "输入「" + name + "」的密码";
+  pickConfirm.textContent = "🗑 删除 " + name;
+  pickMsg.textContent = "";
+  pickPwd.focus();
+}
+
+// 真正执行删除（已验证密码，或该人没设密码）
+function doDeleteUser(name) {
+  if (!confirm("确定删除「" + name + "」吗？\nTA 的食物列表也会一起删除，无法恢复。")) {
+    resetPickForm();
+    renderPickList();
+    return;
+  }
+  const accounts = getAccounts();
+  delete accounts[name];
+  saveAccounts(accounts);
+  try { localStorage.removeItem(storageKeyFor(name)); } catch (e) { /* 忽略 */ }
+
+  if (currentName === name) {
+    currentName = "";          // 删掉的是当前正在用的人
+    showPick("", { canBack: false });
+  } else {
+    resetPickForm();
+    renderPickList();
+  }
+}
+
+pickConfirm.addEventListener("click", pickAction);
+pickName.addEventListener("keydown", (e) => { if (e.key === "Enter") pickAction(); });
+pickPwd.addEventListener("keydown", (e) => { if (e.key === "Enter") pickAction(); });
+
+// 在“新建名字”框里打字时，取消之前点选的人，回到新建状态
+pickName.addEventListener("input", () => {
+  if (pendingName && pickName.value.trim()) resetPickForm();
 });
+
+// 点击“用户列表”标题栏：收起 / 展开
+pickListHead.addEventListener("click", () => {
+  listCollapsed = !listCollapsed;
+  renderPickList();
+});
+pickListHead.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pickListHead.click(); }
+});
+
+pickBack.addEventListener("click", () => {
+  if (currentName) showApp();
+});
+
+// 忘记密码：没设过管理员就先设置；设过则验证；管理员模式下点此退出
+forgotBtn.addEventListener("click", () => {
+  pendingName = "";
+  pickName.value = "";
+  if (adminMode) {
+    adminMode = false;
+    resetPickForm();
+    renderPickList();
+    updateForgotBtn();
+    pickMsg.textContent = "已退出管理员模式";
+    return;
+  }
+  if (!getAdminPwd()) {
+    pendingAction = "admin-set";
+    pickNameRow.hidden = true;
+    pickPwd.value = "";
+    pickPwd.placeholder = "设置管理员密码（仅首次）";
+    pickConfirm.textContent = "🔑 保存管理员密码";
+    pickMsg.textContent = "第一次使用忘记密码：先设置一个管理员密码，以后用它重置任何人的密码";
+    pickPwd.focus();
+    return;
+  }
+  pendingAction = "admin-verify";
+  pickNameRow.hidden = true;
+  pickPwd.value = "";
+  pickPwd.placeholder = "输入管理员密码";
+  pickConfirm.textContent = "🔑 验证";
+  pickMsg.textContent = "验证管理员密码后，可重置任何人的密码（不用输原密码）";
+  pickPwd.focus();
+});
+
+switchBtn.addEventListener("click", () => showPick("", { canBack: true }));
 
 // ============ 列表管理 ============
 function renderList() {
@@ -763,16 +1090,17 @@ clearBtn.addEventListener("click", () => {
 
 // ============ 初始化 ============
 migrateLegacy();       // 把旧版本的数据搬进账号体系
-currentName = "";
-foods = [...DEFAULT_FOODS];
-showLock("");          // 每次打开都先显示锁定页，只有本人输对密码才能看到内容
-</script>
-<script>
-// PWA 离线支持：断网也能打开（需要 https 网址才会生效）
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', function () {
-    navigator.serviceWorker.register('sw.js').catch(function () {});
-  });
+const savedUser = getLastUser();
+if (savedUser && getAccounts()[savedUser] !== undefined) {
+  // 上次的人还在：直接进入，不用输密码
+  currentName = savedUser;
+  foods = loadFoods(savedUser);
+  showApp();
+} else {
+  // 第一次打开（或上次的人已不存在）：先选择 / 创建一个人
+  currentName = "";
+  foods = [...DEFAULT_FOODS];
+  showPick("", { canBack: false });
 }
 </script>
 </body>
