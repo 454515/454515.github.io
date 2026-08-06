@@ -1,5 +1,5 @@
 // Service Worker：让"今天吃什么"在断网时也能打开
-const CACHE = "jtcsm-v1";
+const CACHE = "jtcsm-v2";
 const ASSETS = [
   "./",
   "./index.html",
