@@ -1,4 +1,7 @@
 // Service Worker：让"今天吃什么"在断网时也能打开
+// 版本 v2：页面改为"网络优先"——联网时永远显示最新版，断网才用缓存
+// 以后只改 index.html 的话，重新上传即可，无需动这里。
+// 只有改了图标或 manifest.json 时，才需要把下面 CACHE 的版本号往上加（v3、v4…）。
 const CACHE = "jtcsm-v2";
 const ASSETS = [
   "./",
@@ -26,8 +29,28 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-// 请求：优先用缓存，没有再去网络取并顺手缓存
+// 请求：
+//   - 页面（HTML）：网络优先 → 联网时每次都是最新版，不再被旧缓存困住
+//   - 其他资源（图标、清单）：缓存优先 → 固定文件直接用缓存更快
 self.addEventListener("fetch", (event) => {
+  // 页面导航：优先网络，断网才退回缓存
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request, { cache: "no-store" })   // 绕过浏览器 HTTP 缓存，确保拿到最新
+        .then((res) => {
+          const copy = res.clone();
+          caches.open(CACHE).then((cache) => cache.put(event.request, copy));
+          return res;
+        })
+        .catch(() =>
+          caches.match(event.request)
+            .then((hit) => hit || caches.match("./index.html"))  // 断网时退回缓存的页面
+        )
+    );
+    return;
+  }
+
+  // 其他请求：优先缓存，没有再去网络取并顺手缓存
   event.respondWith(
     caches.match(event.request).then((hit) => {
       if (hit) return hit;
@@ -40,8 +63,6 @@ self.addEventListener("fetch", (event) => {
           return res;
         })
         .catch(() => {
-          // 断网时打开页面，退回首页缓存
-          if (event.request.mode === "navigate") return caches.match("./index.html");
           return new Response("", { status: 503, statusText: "Offline" });
         });
     })
