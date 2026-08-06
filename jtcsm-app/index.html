@@ -1114,7 +1114,7 @@ if (savedUser && getAccounts()[savedUser] !== undefined) {
 // PWA 离线支持：断网也能打开（需要 https 网址才会生效）
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function () {
-    navigator.serviceWorker.register('sw.js').catch(function () {});
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(function () {});
   });
 }
 </script>
