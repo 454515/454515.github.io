@@ -1,0 +1,8 @@
+# 检测识别 V1.0 依赖清单
+# 安装：.venv\Scripts\python.exe -m pip install -r requirements.txt
+PySide6
+paddlepaddle
+paddleocr
+opencv-python
+Pillow
+pyinstaller
